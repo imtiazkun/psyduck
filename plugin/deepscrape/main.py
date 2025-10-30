@@ -39,6 +39,15 @@ def _ensure_dirs():
     os.makedirs(USER_DATA_DIR, exist_ok=True)
 
 
+# Hashtable for depth semantics
+DEPTH_PROFILE = {
+    0: "Collect links only (no page open)",
+    1: "Collect page title, author/name if visible, date if visible, concise summary",
+    2: "Also extract comments/discussion text if present (forums/social/etc.)",
+    3: "Also include comment metadata (author/time/likes) when visible"
+}
+
+
 def _sanitize_filename(text: str) -> str:
     sanitized = re.sub(r'[^\w\s-]', '', text)
     sanitized = re.sub(r'[-\s]+', '_', sanitized).strip('_')
@@ -124,23 +133,23 @@ async def _analyze_platforms_and_plan(term: str, platforms_hint: str, depth: int
         }
     prompt = f"""
 You are planning a scraping strategy.
-Topic: {term}
+User instruction or topic: {term}
 User platform hint: {platforms_hint}
 Depth: {depth}
 
 Depth semantics:
-0: just collect links
-1: collect page title, author/name if visible, key summary
-2: also extract comments/discussions if present (e.g. forums/social)
-3: also extract comment metadata (author, time, likes) if present
+0: {DEPTH_PROFILE[0]}
+1: {DEPTH_PROFILE[1]}
+2: {DEPTH_PROFILE[2]}
+3: {DEPTH_PROFILE[3]}
 
 Return JSON with fields:
-{{
+{
   "targets": [
-    {{"engine": "duckduckgo|google|bing", "reason": "why"}}
+    {"engine": "duckduckgo|google|bing", "reason": "why"}
   ],
   "strategy": "short guidance"
-}}
+}
 Only return JSON.
 """
     try:
@@ -439,6 +448,10 @@ def deepscrape_command(cli_instance, *args):
     print(f"{Colors.WHITE}Requested Results:{Colors.END} {want_results}")
     print(f"{Colors.WHITE}Platforms Hint:{Colors.END} {platforms_hint or '-'}")
     print(f"{Colors.White if hasattr(Colors,'White') else Colors.WHITE}Depth:{Colors.END} {depth}")
+    try:
+        print(f"{Colors.CYAN}Depth profile:{Colors.END} {DEPTH_PROFILE.get(depth, '-')}")
+    except Exception:
+        pass
     print(f"{Colors.WHITE}Timeout (s):{Colors.END} {timeout_s}")
 
     try:
