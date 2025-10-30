@@ -52,6 +52,58 @@ def _get_openai():
     return OpenAI(api_key=api_key)
 
 
+def _strict_yes_no(text: str) -> bool:
+    """Helper to coerce simple 'yes' decisions; defaults to True on ambiguity."""
+    t = text.strip().lower()
+    if 'yes' in t and 'no' not in t:
+        return True
+    if t.startswith('y') and 'no' not in t:
+        return True
+    if t.startswith('n') and 'yes' not in t:
+        return False
+    # Fallback to permissive (avoid over-filtering)
+    return True
+
+
+def _format_candidate_for_llm(title: str, excerpt: str, url: str) -> str:
+    parts = []
+    if title:
+        parts.append(f"Title: {title}")
+    if excerpt:
+        parts.append(f"Excerpt: {excerpt}")
+    if url:
+        parts.append(f"URL: {url}")
+    return "\n".join(parts)
+
+
+def _is_relevant(term: str, title: str, excerpt: str, url: str) -> bool:
+    """Use OpenAI (text) to decide if a candidate result is relevant to the term."""
+    client = _get_openai()
+    if not client:
+        return True
+    content = _format_candidate_for_llm(title, excerpt, url)
+    prompt = f"""
+You are a strict relevance filter. Given a topic and a candidate result, answer with ONLY 'yes' or 'no'.
+
+Topic: {term}
+Candidate:
+{content}
+
+Question: Is this candidate relevant to the topic in a way that would likely satisfy a user searching for this topic? Answer only 'yes' or 'no'.
+"""
+    try:
+        r = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=3,
+            temperature=0
+        )
+        answer = r.choices[0].message.content or ""
+        return _strict_yes_no(answer)
+    except Exception:
+        return True
+
+
 async def _take_screenshot(page) -> bytes:
     return await page.screenshot()
 
@@ -280,20 +332,33 @@ async def _run(term: str, want_results: int, platforms_hint: str, depth: int, ti
                     title = item.get('title', '').strip()
                     if not url or not title:
                         continue
+                    # Log candidate before filtering
+                    try:
+                        rank_log = item.get('rank', '?')
+                        print(f"[deepscrape] candidate rank={rank_log} title={title[:80]} url={url}")
+                    except Exception:
+                        pass
+                    # Relevance filter (skip if irrelevant)
+                    excerpt = item.get('excerpt', '')
+                    if not _is_relevant(term, title, excerpt, url):
+                        print(f"[deepscrape] skipped (irrelevant): {title[:80]}")
+                        continue
                     record = {
                         'url': url,
                         'title': title,
                         'publisher': item.get('publisher', ''),
-                        'excerpt': item.get('excerpt', ''),
+                        'excerpt': excerpt,
                         'rank': item.get('rank', ''),
                     }
                     if depth > 0:
                         # Open a temp tab for per-page analysis to not lose position
                         detail = await ctx.new_page()
                         try:
+                            print(f"[deepscrape] analyzing depth={depth} -> {url}")
                             detail_data = await _analyze_page_depth(detail, url, depth)
                         finally:
                             await detail.close()
+                        print(f"[deepscrape] done depth analysis -> {title[:80]}")
                         record.update(detail_data)
                         # Normalize comments to string for CSV
                         if isinstance(record.get('comments'), list):
