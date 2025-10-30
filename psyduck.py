@@ -4,6 +4,7 @@ Psyduck - A stylized CLI application with loading animations and visual elements
 """
 
 import argparse
+import shlex
 import sys
 import time
 import random
@@ -278,7 +279,10 @@ class PsyduckCLI:
                     self.show_menu()
                     continue
                 
-                parts = user_input.split()
+                try:
+                    parts = shlex.split(user_input)
+                except ValueError:
+                    parts = user_input.split()
                 command = parts[0].lower()
                 args = parts[1:] if len(parts) > 1 else []
                 
@@ -314,6 +318,9 @@ Examples:
     
     parser.add_argument('command', nargs='?', default='interactive',
                        help='Command to run (default: interactive mode)')
+    # Capture the remainder so commands like: psyduck deepscrape "foo bar" --results=5 work
+    parser.add_argument('args', nargs=argparse.REMAINDER,
+                       help='Arguments for the command (use quotes to group)')
     
     args = parser.parse_args()
     cli = PsyduckCLI()
@@ -321,8 +328,8 @@ Examples:
     if args.command == 'interactive':
         cli.run_interactive()
     else:
-        # Try to execute the command
-        if not cli.execute_command(args.command):
+        # Try to execute the command with any remaining args
+        if not cli.execute_command(args.command, args=args.args):
             print(f"{Colors.RED}Unknown command: {args.command}{Colors.END}")
             print(f"{Colors.YELLOW}Run 'psyduck --help' for usage information{Colors.END}")
             sys.exit(1)
