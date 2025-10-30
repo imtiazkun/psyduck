@@ -57,6 +57,28 @@ A modular CLI tool for AI-powered OSINT (Open Source Intelligence) and sentiment
 
 ## Usage
 
+### DeepScrape (Vision-Enhanced, Depth-Controlled)
+
+Depth-configurable cross-platform scraping and analysis. Uses OpenAI to interpret platforms and depth intent, then performs vision-assisted scraping.
+
+Command:
+```bash
+python psyduck.py deepscrape "<TOPIC or SEARCH TERM>" --results=<NUMBER> --platforms="<STRING>" --depth=<0|1|2|3> --timeout=<NUMBER>
+```
+
+Example:
+```bash
+python psyduck.py deepscrape "ocean diversity" --results=10 --platforms="blogs & social media" --depth=0 --timeout=3600
+```
+
+Depth semantics:
+- 0: collect links only
+- 1: add page title/author/date/summary
+- 2: if present, include comments/discussion text
+- 3: include comment metadata (author/time/likes) when visible
+
+Output CSV (superset): `search_term, url, title, author, date, publisher, rank, excerpt, summary, has_comments, comments, scraped_at`
+
 ### Web Search Scraper (Vision-Enhanced)
 
 Scrape search results from DuckDuckGo, Google, or Bing using AI vision analysis.
@@ -138,6 +160,9 @@ python3 psyduck.py webscrape "AI news" 10 --location=duckduckgo
 - `models` - List all available OpenAI models
 - `test-openai` - Test OpenAI API connection
 - `model-info [model_name]` - Get detailed information about a specific model
+
+#### DeepScrape Plugin
+- `deepscrape "<TOPIC>" --results=<N> --platforms="<STRING>" --depth=<0|1|2|3> --timeout=<S>` - Depth-controlled scraping
 
 #### Webscrape Plugin  
 - `webscrape "<SEARCH TERM>" <LIMIT> --location=<duckduckgo|google|bing>` - Scrape search results
