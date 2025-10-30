@@ -1,0 +1,6 @@
+# Psyduck CLI Dependencies
+openai>=1.0.0
+python-dotenv>=1.0.0
+playwright>=1.46.0
+pillow>=10.0.0
+pytesseract>=0.3.10
