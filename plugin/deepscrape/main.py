@@ -39,15 +39,6 @@ def _ensure_dirs():
     os.makedirs(USER_DATA_DIR, exist_ok=True)
 
 
-# Hashtable for depth semantics
-DEPTH_PROFILE = {
-    0: "Collect links only (no page open)",
-    1: "Collect page title, author/name if visible, date if visible, concise summary",
-    2: "Also extract comments/discussion text if present (forums/social/etc.)",
-    3: "Also include comment metadata (author/time/likes) when visible"
-}
-
-
 def _sanitize_filename(text: str) -> str:
     sanitized = re.sub(r'[^\w\s-]', '', text)
     sanitized = re.sub(r'[-\s]+', '_', sanitized).strip('_')
@@ -86,7 +77,37 @@ def _format_candidate_for_llm(title: str, excerpt: str, url: str) -> str:
 
 
 def _is_relevant(term: str, title: str, excerpt: str, url: str) -> bool:
-    """Use OpenAI (text) to decide if a candidate result is relevant to the term."""
+    """Use OpenAI (text) to decide if a candidate result is relevant to the term.
+    For multi-word terms (e.g., names like "Imtiaz Al Shariar"), prefer exact phrase presence.
+    """
+    multi = ' ' in term.strip()
+    blob = f"{title}\n{excerpt}\n{url}".lower()
+    t = term.strip().lower()
+    if multi and t not in blob:
+        # If exact phrase not present, bias to 'no' unless LLM explicitly says yes.
+        client = _get_openai()
+        if not client:
+            return False
+        content = _format_candidate_for_llm(title, excerpt, url)
+        prompt = f"""
+You are a strict relevance filter. The user is searching for the EXACT PHRASE (case-insensitive): "{term}".
+If this exact phrase is not present in the title, snippet/summary, or URL, answer 'no'. If present or strongly implied, answer 'yes'.
+Answer with ONLY 'yes' or 'no'.
+
+Candidate:\n{content}
+"""
+        try:
+            r = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=3,
+                temperature=0
+            )
+            answer = r.choices[0].message.content or ""
+            return _strict_yes_no(answer)
+        except Exception:
+            return False
+    # Single-word or phrase appeared already → normal relevance check
     client = _get_openai()
     if not client:
         return True
@@ -133,23 +154,23 @@ async def _analyze_platforms_and_plan(term: str, platforms_hint: str, depth: int
         }
     prompt = f"""
 You are planning a scraping strategy.
-User instruction or topic: {term}
+Topic: {term}
 User platform hint: {platforms_hint}
 Depth: {depth}
 
 Depth semantics:
-0: {DEPTH_PROFILE[0]}
-1: {DEPTH_PROFILE[1]}
-2: {DEPTH_PROFILE[2]}
-3: {DEPTH_PROFILE[3]}
+0: just collect links
+1: collect page title, author/name if visible, key summary
+2: also extract comments/discussions if present (e.g. forums/social)
+3: also extract comment metadata (author, time, likes) if present
 
 Return JSON with fields:
-{
+{{
   "targets": [
-    {"engine": "duckduckgo|google|bing", "reason": "why"}
+    {{"engine": "duckduckgo|google|bing", "reason": "why"}}
   ],
   "strategy": "short guidance"
-}
+}}
 Only return JSON.
 """
     try:
@@ -175,7 +196,9 @@ Only return JSON.
 
 
 def _search_url(engine: str, term: str) -> str:
-    q = term.replace(' ', '+')
+    # Use exact-phrase search for multi-word terms to reduce false positives
+    qterm = f'"{term}"' if ' ' in term.strip() else term
+    q = qterm.replace(' ', '+')
     e = engine.lower()
     if e == 'google':
         return f"https://www.google.com/search?q={q}&tbm=nws"
@@ -448,10 +471,6 @@ def deepscrape_command(cli_instance, *args):
     print(f"{Colors.WHITE}Requested Results:{Colors.END} {want_results}")
     print(f"{Colors.WHITE}Platforms Hint:{Colors.END} {platforms_hint or '-'}")
     print(f"{Colors.White if hasattr(Colors,'White') else Colors.WHITE}Depth:{Colors.END} {depth}")
-    try:
-        print(f"{Colors.CYAN}Depth profile:{Colors.END} {DEPTH_PROFILE.get(depth, '-')}")
-    except Exception:
-        pass
     print(f"{Colors.WHITE}Timeout (s):{Colors.END} {timeout_s}")
 
     try:
