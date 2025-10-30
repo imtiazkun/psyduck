@@ -26,7 +26,6 @@ A modular CLI tool for AI-powered OSINT (Open Source Intelligence) and sentiment
 ## Features
 
 - **Vision-Enhanced Scraping**: Uses OpenAI GPT-4o-mini vision to intelligently extract data from web pages
-- **Facebook Data Extraction**: Scrape posts, comments, and metadata from Facebook pages, groups, and hashtags
 - **Multi-Engine Web Search**: Scrape search results from DuckDuckGo, Google, and Bing
 - **OCR Text Extraction**: Extract text from images using Tesseract OCR
 - **Plugin Architecture**: Modular system with dynamic plugin loading
@@ -57,41 +56,6 @@ A modular CLI tool for AI-powered OSINT (Open Source Intelligence) and sentiment
    ```
 
 ## Usage
-
-### Facebook Data Scraper (Vision-Enhanced)
-
-Uses OpenAI Vision + OCR for intelligent post analysis and data extraction from Facebook pages, groups, and hashtags.
-
-**Command:**
-```bash
-python psyduck.py fb-scrape <URL> [max_posts]
-```
-
-**Examples:**
-```bash
-# Scrape hashtag posts
-python psyduck.py fb-scrape "https://web.facebook.com/hashtag/python" 50
-
-# Scrape page posts  
-python psyduck.py fb-scrape "https://www.facebook.com/awamileague" 20
-
-# Scrape group posts
-python psyduck.py fb-scrape "https://www.facebook.com/groups/123456789" 30
-```
-
-**Features:**
-- **Vision Analysis**: Uses GPT-4o-mini to analyze screenshots and identify posts
-- **Smart Filtering**: Skips media-only posts, focuses on text content
-- **OCR Extraction**: Extracts text from images when present
-- **Rich Metadata**: Captures author names, likes, comments with authors
-- **Top Comments**: Gets top 5 most engaged comments per post
-- **Persistent Login**: Saves session in `data/fb_user` (login once)
-- **Text Expansion**: Automatically clicks "See more" to get full post content
-
-**Output CSV columns:**
-- `post_id`, `author_name`, `post_text`, `likes_count`, `comments_count`
-- `has_media`, `media_type`, `image_text`, `has_see_more`, `is_hashtag_only`
-- `top_comments`, `comment_authors`, `comment_likes`, `comment_replies`, `comment_times`
 
 ### Web Search Scraper (Vision-Enhanced)
 
@@ -126,9 +90,7 @@ python psyduck.py webscrape "tech news" 15 --location=bing
 ## Data Storage
 
 All scraped data is saved to the `data/` directory:
-- `data/fb_<tag>_posts.csv` - Facebook scraping results
 - `data/webscrape_<engine>_<term>.csv` - Web search results
-- `data/fb_user/` - Persistent Facebook browser session
 - `data/webscrape_user/` - Persistent web scraping browser session
 
 ## Cost Tracking
@@ -158,7 +120,6 @@ python3 psyduck.py test-openai      # Test OpenAI API connection
 python3 psyduck.py model-info gpt-4 # Get info about specific model
 
 # Scraping commands (require OpenAI API key + browser)
-python3 psyduck.py fb-scrape "https://web.facebook.com/hashtag/python" 50
 python3 psyduck.py webscrape "AI news" 10 --location=duckduckgo
 ```
 
@@ -177,9 +138,6 @@ python3 psyduck.py webscrape "AI news" 10 --location=duckduckgo
 - `models` - List all available OpenAI models
 - `test-openai` - Test OpenAI API connection
 - `model-info [model_name]` - Get detailed information about a specific model
-
-#### Facebook Plugin
-- `fb-scrape <URL> [max_posts]` - Scrape Facebook posts and comments
 
 #### Webscrape Plugin  
 - `webscrape "<SEARCH TERM>" <LIMIT> --location=<duckduckgo|google|bing>` - Scrape search results
@@ -238,15 +196,6 @@ python3 psyduck.py models
 ```bash
 python3 psyduck.py model-info gpt-4
 python3 psyduck.py model-info gpt-4o-mini
-```
-
-### Facebook Scraping
-```bash
-# Scrape Python hashtag posts
-python3 psyduck.py fb-scrape "https://web.facebook.com/hashtag/python" 30
-
-# Scrape a specific page
-python3 psyduck.py fb-scrape "https://www.facebook.com/awamileague" 20
 ```
 
 ### Web Search Scraping
