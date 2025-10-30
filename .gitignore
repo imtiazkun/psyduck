@@ -72,7 +72,8 @@ GraphiteDawnCache/
 LOCK
 LOG
 
-# Data files (uncomment if you want to exclude CSV files)
+# Data files
+data/
 # *.csv
 
 # Jupyter Notebook
