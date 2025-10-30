@@ -54,8 +54,8 @@ class PsyduckCLI:
 ⠀⠀⠀⠰⠥⠤⢄⢀⡠⠄⡈⡀⠀⠀⣇⣀⠠⢄⠀⠒⠤⠣⠀
 ⠀⠀⠀⠀⠀⠀⠀⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠀
 
-{Colors.BOLD}🦆 PSYDUCK CLI v1.0.0 🦆{Colors.END}
-{Colors.WHITE}AI OSINT Tool for sentiment Analysis{Colors.END}
+{Colors.BOLD}PSYDUCK CLI v1.0.0{Colors.END}
+{Colors.WHITE}AI OSINT Tool for you & I{Colors.END}
         """
         print(banner)
     
