@@ -75,10 +75,68 @@ def _get_search_url(search_term: str, engine: str) -> str:
         raise ValueError(f"Unsupported search engine: {engine}")
 
 
-async def _take_screenshot(page, element=None) -> bytes:
-    """Take screenshot of page or specific element"""
+async def _find_results_container(page, engine: str):
+    """Find the search results container element for the given engine"""
+    try:
+        # Engine-specific selectors for results containers
+        if engine.lower() == 'google':
+            selectors = [
+                '#search',  # Main search container
+                '#rso',  # Results container
+                '#main',  # Main content
+                '[data-async-context]',  # Async results container
+            ]
+        elif engine.lower() == 'bing':
+            selectors = [
+                '#b_results',  # Bing results
+                '#b_content',  # Bing content
+                '.b_results',  # Alternative class
+                'main',  # Main element
+            ]
+        else:  # DuckDuckGo
+            selectors = [
+                '#links',  # Main links container
+                '.results',  # Results class
+                '#web_content_wrapper',  # Content wrapper
+                'main',  # Main element
+            ]
+        
+        # Try each selector
+        for selector in selectors:
+            try:
+                element = await page.query_selector(selector)
+                if element:
+                    is_visible = await element.is_visible()
+                    if is_visible:
+                        # Verify it has some content (has child elements)
+                        child_count = await element.evaluate('el => el.children.length')
+                        if child_count > 0:
+                            print(f"[webscrape] Found results container: {selector}")
+                            return element
+            except Exception:
+                continue
+        
+        return None
+    except Exception as e:
+        print(f"[webscrape] Error finding results container: {e}")
+        return None
+
+
+async def _take_screenshot(page, engine: str = None, element=None) -> bytes:
+    """Take screenshot of page or specific element, preferring results container"""
     if element:
         return await element.screenshot()
+    
+    # Try to find and screenshot just the results container
+    if engine:
+        container = await _find_results_container(page, engine)
+        if container:
+            try:
+                return await container.screenshot()
+            except Exception as e:
+                print(f"[webscrape] Container screenshot failed, using full page: {e}")
+    
+    # Fallback to full page screenshot
     return await page.screenshot()
 
 
@@ -89,7 +147,7 @@ def _encode_image(image_bytes: bytes) -> str:
 
 async def _analyze_search_results(page, engine: str) -> Tuple[List[Dict], int, float]:
     """Use OpenAI Vision to analyze search results"""
-    screenshot = await _take_screenshot(page)
+    screenshot = await _take_screenshot(page, engine)
     base64_image = _encode_image(screenshot)
     
     client = get_openai_client()
@@ -187,13 +245,21 @@ Focus on:
             max_tokens=3000
         )
         
-        # Track token usage
+        # Track token usage (real values from OpenAI API)
         usage = response.usage
+        prompt_tokens = usage.prompt_tokens if usage else 0
+        completion_tokens = usage.completion_tokens if usage else 0
         tokens_used = usage.total_tokens if usage else 0
-        cost = tokens_used * 0.00015  # GPT-4o-mini pricing
         
-        print(f"[webscrape] Token usage - Prompt: {usage.prompt_tokens if usage else 0}, Completion: {usage.completion_tokens if usage else 0}, Total: {tokens_used}")
-        print(f"[webscrape] Estimated cost: ${cost:.4f} (GPT-4o-mini vision)")
+        # GPT-4o-mini vision pricing (per 1M tokens)
+        # Input: $0.15/1M = $0.00000015 per token
+        # Output: $0.60/1M = $0.0000006 per token
+        input_cost = prompt_tokens * 0.00000015
+        output_cost = completion_tokens * 0.0000006
+        cost = input_cost + output_cost
+        
+        print(f"[webscrape] Token usage (from API) - Prompt: {prompt_tokens:,}, Completion: {completion_tokens:,}, Total: {tokens_used:,}")
+        print(f"[webscrape] Cost breakdown - Input: ${input_cost:.6f}, Output: ${output_cost:.6f}, Total: ${cost:.6f}")
         
         content = response.choices[0].message.content
         # Extract JSON from response
@@ -208,6 +274,130 @@ Focus on:
     except Exception as e:
         print(f"Vision analysis error: {e}")
         return [], 0, 0.0
+
+
+async def _try_click_load_more(page, engine: str) -> bool:
+    """Try to find and click 'Load more' or 'Show more' buttons"""
+    try:
+        # Try text-based locators first (more reliable)
+        text_patterns = ["Load more", "Show more", "More results", "Load additional results"]
+        for text in text_patterns:
+            try:
+                locator = page.get_by_text(text, exact=False)
+                if await locator.count() > 0:
+                    first = locator.first
+                    if await first.is_visible():
+                        print(f"[webscrape] Found load more button: '{text}'")
+                        await first.click(timeout=5000)
+                        await asyncio.sleep(random.uniform(2, 4))
+                        return True
+            except Exception:
+                continue
+        
+        # Try CSS selectors as fallback
+        selectors = [
+            'button[data-testid="load-more"]',
+            'button[aria-label*="Load more"]',
+            'button[aria-label*="Show more"]',
+            'a[href*="more"]',
+            'a#pnnext',
+            'a[aria-label*="More"]',
+            'a[title*="Next"]',
+        ]
+        
+        for selector in selectors:
+            try:
+                element = await page.query_selector(selector)
+                if element:
+                    is_visible = await element.is_visible()
+                    if is_visible:
+                        print(f"[webscrape] Found load more button: {selector}")
+                        await element.click(timeout=5000)
+                        await asyncio.sleep(random.uniform(2, 4))
+                        return True
+            except Exception:
+                continue
+        
+        return False
+    except Exception as e:
+        print(f"[webscrape] Error checking load more: {e}")
+        return False
+
+
+async def _try_click_pagination(page, engine: str) -> bool:
+    """Try to find and click pagination 'Next' button"""
+    try:
+        # Try text-based locators first (more reliable)
+        text_patterns = ["Next", "Next page", "→", "›"]
+        for text in text_patterns:
+            try:
+                locator = page.get_by_text(text, exact=False)
+                if await locator.count() > 0:
+                    # Filter to find the actual pagination next button
+                    # Usually it's in a navigation area or has specific attributes
+                    for i in range(await locator.count()):
+                        try:
+                            elem = locator.nth(i)
+                            if await elem.is_visible():
+                                # Check if it's likely a pagination button (has href or is in nav)
+                                tag_name = await elem.evaluate('el => el.tagName.toLowerCase()')
+                                if tag_name in ['a', 'button']:
+                                    print(f"[webscrape] Found pagination button: '{text}'")
+                                    await elem.click(timeout=5000)
+                                    await asyncio.sleep(random.uniform(3, 5))
+                                    return True
+                        except Exception:
+                            continue
+            except Exception:
+                continue
+        
+        # Engine-specific CSS selectors as fallback
+        if engine.lower() == 'google':
+            selectors = [
+                'a#pnnext',
+                'a[aria-label="Next"]',
+                'a[aria-label*="Next page"]',
+                'td[style*="text-align:left"] a',
+            ]
+        elif engine.lower() == 'bing':
+            selectors = [
+                'a[title="Next page"]',
+                'a[aria-label="Next"]',
+                'a.sb_pagN',
+                'a[href*="first="]',
+            ]
+        else:  # DuckDuckGo
+            selectors = [
+                'a.result--more__btn',
+                'a[href*="next"]',
+            ]
+        
+        # Generic patterns
+        selectors.extend([
+            'a[aria-label*="Next"]',
+            'button[aria-label*="Next"]',
+            'a.pagination__next',
+            'a.next',
+            'nav a:last-child',
+        ])
+        
+        for selector in selectors:
+            try:
+                element = await page.query_selector(selector)
+                if element:
+                    is_visible = await element.is_visible()
+                    if is_visible:
+                        print(f"[webscrape] Found pagination button: {selector}")
+                        await element.click(timeout=5000)
+                        await asyncio.sleep(random.uniform(3, 5))
+                        return True
+            except Exception:
+                continue
+        
+        return False
+    except Exception as e:
+        print(f"[webscrape] Error checking pagination: {e}")
+        return False
 
 
 async def _scroll_and_collect_results(page, max_results: int, engine: str, search_term: str) -> List[Dict[str, str]]:
@@ -274,11 +464,25 @@ async def _scroll_and_collect_results(page, max_results: int, engine: str, searc
         else:
             fail_rounds = 0
             
-        # Scroll to load more content
+        # Try to load more content: buttons first, then pagination, then scroll
         if len(collected) < max_results and scroll_count < max_scrolls:
-            print(f"[webscrape] Scrolling to load more results...")
-            await page.evaluate('window.scrollBy(0, document.body.scrollHeight)')
-            await asyncio.sleep(random.uniform(2, 4))
+            clicked = False
+            
+            # First try "Load more" button
+            print(f"[webscrape] Checking for 'Load more' button...")
+            clicked = await _try_click_load_more(page, engine)
+            
+            # If no load more button, try pagination
+            if not clicked:
+                print(f"[webscrape] Checking for pagination 'Next' button...")
+                clicked = await _try_click_pagination(page, engine)
+            
+            # Fall back to scrolling if no buttons found
+            if not clicked:
+                print(f"[webscrape] No buttons found, scrolling to load more results...")
+                await page.evaluate('window.scrollBy(0, document.body.scrollHeight)')
+                await asyncio.sleep(random.uniform(2, 4))
+            
             scroll_count += 1
 
     # Print total usage summary
@@ -341,6 +545,14 @@ async def _run(search_term: str, max_results: int, engine: str):
         print(f"\n[webscrape] Navigating to: {search_url}")
         await page.goto(search_url, wait_until="domcontentloaded")
         await asyncio.sleep(3)
+        
+        # Set moderate zoom (75%) to fit more content while maintaining readability
+        zoom_level = 0.75
+        try:
+            await page.evaluate(f'document.body.style.zoom = "{zoom_level}"')
+            print(f"[webscrape] Set zoom to {int(zoom_level * 100)}% for better content density")
+        except Exception as e:
+            print(f"[webscrape] Warning: Could not set zoom: {e}")
 
         # Collect results
         results = await _scroll_and_collect_results(page, max_results, engine, search_term)

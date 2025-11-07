@@ -79,15 +79,6 @@ Depth semantics:
 
 Output CSV (superset): `search_term, url, title, author, date, publisher, rank, excerpt, summary, has_comments, comments, scraped_at`
 
-Natural-language instruction support:
-- The first quoted argument can be a plain term or an instruction.
-- Example:
-```bash
-python psyduck.py deepscrape "Collect everything you can find about Imtiaz Al Shariar" \
-  --results=10 --platforms="any" --depth=1 --timeout=3600
-```
-This will aim for 10 mentions across any platforms (social/blog/video, etc.) and output a descriptive list (depth 1) about that person.
-
 ### Web Search Scraper (Vision-Enhanced)
 
 Scrape search results from DuckDuckGo, Google, or Bing using AI vision analysis.
